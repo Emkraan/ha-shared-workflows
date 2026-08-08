@@ -1,0 +1,55 @@
+name: validate-integration
+
+# ============================================================================
+# Reusable validation workflow for Emkraan Home Assistant integrations.
+#
+# Runs hassfest (HA core integration validator) and HACS validation on every
+# push, PR, and weekly schedule. Called from each integration repo's own
+# validate.yml via workflow_call.
+#
+# Why a shared repo instead of a shared workflow inside one integration repo:
+# HACS enforces one integration per repository (it picks the first
+# custom_components/ subdirectory alphabetically and ignores the rest).
+# The 6 Emkraan HA integrations must stay in separate repos; this repo
+# provides the canonical CI they all call.
+#
+# Caller example (place in .github/workflows/validate.yml of each repo):
+#
+#   name: Validate
+#   on:
+#     push:
+#     pull_request:
+#     schedule:
+#       - cron: "0 0 * * 0"
+#   jobs:
+#     validate:
+#       uses: Emkraan/ha-shared-workflows/.github/workflows/validate-integration.yml@main
+#       with:
+#         hacs-category: integration
+# ============================================================================
+
+on:
+  workflow_call:
+    inputs:
+      hacs-category:
+        description: "HACS category passed to hacs/action (integration or plugin)"
+        required: false
+        type: string
+        default: integration
+
+jobs:
+  hassfest:
+    name: hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hacs/action@main
+        with:
+          category: ${{ inputs.hacs-category }}
