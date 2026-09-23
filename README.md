@@ -25,6 +25,7 @@ name: Validate
 on:
   push:
   pull_request:
+  merge_group:        # required: every integration repo merges through a merge queue
   schedule:
     - cron: "0 0 * * 0"
 
