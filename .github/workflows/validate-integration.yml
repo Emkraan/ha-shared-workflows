@@ -20,12 +20,23 @@ name: validate-integration
 #     push:
 #     pull_request:
 #     schedule:
-#       - cron: "0 0 * * 0"
+#       - cron: "17 5 * * *"     # daily: catches new hassfest/HACS rules
 #   jobs:
 #     validate:
 #       uses: Emkraan/ha-shared-workflows/.github/workflows/validate-integration.yml@main
+#       permissions:
+#         contents: read
+#         issues: write         # scheduled-failure alert issue
 #       with:
 #         hacs-category: integration
+#
+# Scheduled-failure alert: hassfest and HACS add rules without notice (for
+# example the 2026-10 rule rejecting exact pins on packages Home Assistant
+# itself depends on). A scheduled run on an unchanged main is the only thing
+# that sees such a rule before the next PR, and a failed scheduled run notifies
+# nobody. On a scheduled run, the `alert` job opens (or comments on) one
+# "Scheduled validation failing" issue when a check fails, and closes it on the
+# next green scheduled run. Push and PR runs never touch the issue.
 # ============================================================================
 
 on:
@@ -53,3 +64,36 @@ jobs:
       - uses: hacs/action@main
         with:
           category: ${{ inputs.hacs-category }}
+
+  alert:
+    name: scheduled-failure alert
+    needs: [hassfest, hacs]
+    if: ${{ always() && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TITLE: Scheduled validation failing
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      HASSFEST: ${{ needs.hassfest.result }}
+      HACS: ${{ needs.hacs.result }}
+    steps:
+      - name: Open, update or close the alert issue
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title \
+            --jq "[.[] | select(.title == env.TITLE)][0].number // empty")"
+          if [ "$HASSFEST" = "failure" ] || [ "$HACS" = "failure" ]; then
+            body="The scheduled validation of \`main\` failed: hassfest=$HASSFEST, HACS=$HACS. No code changed, so a new upstream rule is the likely cause. Run: $RUN_URL"
+            if [ -n "$existing" ]; then
+              gh issue comment "$existing" --body "Still failing: hassfest=$HASSFEST, HACS=$HACS. Run: $RUN_URL"
+            else
+              gh issue create --title "$TITLE" --label bug --body "$body"
+            fi
+          elif [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "Scheduled validation is green again: $RUN_URL"
+          else
+            echo "green, no open alert"
+          fi
