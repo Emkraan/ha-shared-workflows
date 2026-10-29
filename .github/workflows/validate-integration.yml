@@ -90,7 +90,8 @@ jobs:
             if [ -n "$existing" ]; then
               gh issue comment "$existing" --body "Still failing: hassfest=$HASSFEST, HACS=$HACS. Run: $RUN_URL"
             else
-              gh issue create --title "$TITLE" --label bug --body "$body"
+              gh label create "type:bug" --description "Something is broken" >/dev/null 2>&1 || true
+              gh issue create --title "$TITLE" --label type:bug --body "$body"
             fi
           elif [ -n "$existing" ]; then
             gh issue close "$existing" --comment "Scheduled validation is green again: $RUN_URL"
