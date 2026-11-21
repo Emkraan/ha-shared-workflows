@@ -98,3 +98,38 @@ jobs:
           else
             echo "green, no open alert"
           fi
+
+  readme-freshness:
+    name: readme freshness
+    # Keep the README accurate with the latest features: a PR that changes
+    # integration code must also update README.md. Pure non-feature changes
+    # (refactors, CI, tests) opt out with the 'no-readme-change' PR label.
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: README reflects code changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          case ",${PR_LABELS}," in
+            *,no-readme-change,*)
+              echo "Skipped: PR carries the 'no-readme-change' label."
+              exit 0
+              ;;
+          esac
+          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          code="$(printf '%s\n' "$changed" | grep -E '^custom_components/[^/]+/' | grep -vE '/(translations|brand)/' || true)"
+          readme="$(printf '%s\n' "$changed" | grep -E '^README\.md$' || true)"
+          if [ -n "$code" ] && [ -z "$readme" ]; then
+            echo "::error::Integration code changed but README.md was not updated. Update the README so it stays accurate with the latest features, or add the 'no-readme-change' label for a non-feature change."
+            echo "Changed integration files:"
+            printf '%s\n' "$code"
+            exit 1
+          fi
+          echo "README freshness OK"
