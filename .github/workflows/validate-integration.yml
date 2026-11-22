@@ -104,16 +104,17 @@ jobs:
     # Keep the README accurate with the latest features: a PR that changes
     # integration code must also update README.md. Pure non-feature changes
     # (refactors, CI, tests) opt out with the 'no-readme-change' PR label.
+    # The PR's file list comes from the API (not git diff): on the pull_request
+    # event the checked-out merge ref does not carry the head commit object, so a
+    # local diff against head.sha fails with "bad object".
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - name: README reflects code changes
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
@@ -123,7 +124,7 @@ jobs:
               exit 0
               ;;
           esac
-          changed="$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")"
+          changed="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')"
           code="$(printf '%s\n' "$changed" | grep -E '^custom_components/[^/]+/' | grep -vE '/(translations|brand)/' || true)"
           readme="$(printf '%s\n' "$changed" | grep -E '^README\.md$' || true)"
           if [ -n "$code" ] && [ -z "$readme" ]; then
